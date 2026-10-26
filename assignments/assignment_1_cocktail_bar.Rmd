@@ -32,7 +32,10 @@ Note: There are several different ways to solve these tasks, feel free to come u
 Read the cocktail dataset from: <https://github.com/nthun/cocktail-balance> You can also find the codebook there.
 
 ```{r}
-
+cocktails <- readr::read_tsv(
+  "https://raw.githubusercontent.com/nthun/cocktail-balance/master/cocktail_data.tsv"
+)
+head(cocktails)
 ```
 
 ## 2. Transform the data table and clean the ingredient variable!
@@ -40,7 +43,33 @@ Read the cocktail dataset from: <https://github.com/nthun/cocktail-balance> You 
 The ingredients are currently in a single cell for each cocktail. It would be better to put them in separate rows. Also, the variable should be cleaned of all quantities (e.g. 1/2 oz, 2 dashes, etc.), and the indicator of alcohol content (e.g. 47.3% abv). You will need to use this cleaned table in later tasks.
 
 ```{r}
+cocktails_clean <- cocktails
 
+cocktails_clean$ingredients <- stringr::str_replace_all(
+  cocktails_clean$ingredients,
+  stringr::fixed("<b4/>"),
+  "<br/>"
+)
+
+cocktails_clean <- tidyr::separate_rows(
+  cocktails_clean,
+  ingredients,
+  sep = "<br\\s*/?>"
+)
+
+cocktails_clean$ingredients <- stringr::str_remove_all(
+  cocktails_clean$ingredients,
+  "\\s*\\([^)]*%\\s*abv\\)"
+)
+
+cocktails_clean$ingredients <- stringr::str_remove(
+  cocktails_clean$ingredients,
+  "^\\s*\\d+(?:\\.\\d+|/\\d+)?(?:\\s+\\d+/\\d+)?\\s*(?:oz|dash|dashes?|drops?|bsp|tsp|tbsp)\\s+"
+)
+
+cocktails_clean$ingredients <- trimws(cocktails_clean$ingredients)
+
+head(cocktails_clean[, c("name", "ingredients")], 10)
 ```
 
 ## 3. All ingredients in alphabetical order
@@ -48,7 +77,11 @@ The ingredients are currently in a single cell for each cocktail. It would be be
 Before opening the bar, you need to find a reliable supplier that has all the ingredients. You need to send a list of all possible ingredients you will need. They don't need the quantities (i.e. how many of these are needed), just the names of the ingredients.
 
 ```{r}
+ingredients_list <- cocktails_clean |>
+  dplyr::distinct(ingredients) |>
+  dplyr::arrange(ingredients)
 
+print(ingredients_list, n = Inf)
 ```
 
 ## 4. Number of unique ingredients
@@ -56,7 +89,8 @@ Before opening the bar, you need to find a reliable supplier that has all the in
 How many different ingredients you will need?
 
 ```{r}
-
+nrow(ingredients_list)
+A total of 65 unique ingredients are needed to prepare all the cocktails for the event.
 ```
 
 ## 5. What are the top 10 ingredients?
@@ -64,7 +98,17 @@ How many different ingredients you will need?
 What are the 10 most frequently used ingredients? If there are ties, you can list more than 10.
 
 ```{r}
+top_ingredients <- cocktails_clean |>
+  dplyr::count(ingredients, name = "frequency") |>
+  dplyr::slice_max(
+    order_by = frequency,
+    n = 10,
+    with_ties = TRUE
+  )
 
+print(top_ingredients)
+
+The most frequently used ingredient is lemon juice (15X), followed by simple syrup (14X ). Gin and sweet vermouth each appear 13 times, while Angostura bitters and lime juice occur 12 times each. A total of 11 ingredients are included in the top 10 ranking due to a tie at the tenth position.
 ```
 
 ## 6. Which cocktail(s) has/have the most ingredients?
@@ -72,7 +116,19 @@ What are the 10 most frequently used ingredients? If there are ties, you can lis
 Count the number of ingredients and filter all the cocktails that has that many.
 
 ```{r}
+cocktail_counts <- cocktails_clean |>
+  dplyr::count(name, name = "ingredient_count")
 
+most_ingredients <- cocktail_counts |>
+  dplyr::slice_max(
+    order_by = ingredient_count,
+    n = 1,
+    with_ties = TRUE
+  )
+
+print(most_ingredients)
+
+There are six cocktails, which share the highest number of ingredients: Blender Margarita, Carbonated Negroni, Clover Club, De La Louisiane, Pink Lady, and Vieux Carre. Each of these contains 6 ingredients.
 ```
 
 ## 7. How many ingredients appear in only one cocktail (rare ingredient)?
@@ -80,19 +136,46 @@ Count the number of ingredients and filter all the cocktails that has that many.
 Count all cocktails with only one ingredient, and
 
 ```{r}
+rare_ingredients <- cocktails_clean |>
+  dplyr::distinct(name, ingredients) |>
+  dplyr::count(ingredients, name = "frequency") |>
+  dplyr::filter(frequency == 1)
 
+print(rare_ingredients)
+
+nrow(rare_ingredients)
+
+There are 28 rare ingredients in the cocktail dataset.
 ```
 
 ## 8. Which cocktail has an ingredient that is only used in one cocktail?
 
 ```{r}
+ cocktails_with_rare <- cocktails_clean |>
+  dplyr::semi_join(
+    rare_ingredients,
+    by = "ingredients"
+  ) |>
+  dplyr::distinct(name, ingredients) |>
+  dplyr::arrange(name, ingredients)
 
+print(cocktails_with_rare, n = Inf)
+
+Based on the cleaned dataset, 22 different cocktails contain at least one ingredient that is used in only one cocktail. Some cocktails contain multiple rare ingredients. The table below lists the cocktails and their corresponding rare ingredients.
 ```
 
 ## 9. What are the cocktails without rare ingredients?
 
 ```{r}
-  
+cocktails_without_rare <- cocktails_clean |>
+  dplyr::distinct(name) |>
+  dplyr::anti_join(cocktails_with_rare, by = "name") |>
+  dplyr::arrange(name)
+
+print(cocktails_without_rare, n = Inf)
+
+There are the coctails: Bee's Knees, Between the Sheets, Bijou, Blinker, Bobby Burns, Brady Crusta, Brown Derby, Carbonated Margarita, Carbonated Whiskey Sour, Champs-Elysses, Chartruth, Classic Daiquiri, Corpse Reviver #2, Daiquiri with More Lime, Fresh Lime Gimlet, Gold Rush, Hemingway Daiquiri, Honeysuckle, Improved Whiskey Cocktail, Jack Rose, Manhatan (Boubon, 45% abv), Manhatan (Rye, 50% abv), Margarita, Negroni, Old Fashioned, Old Pal, Pegu Club, Rob Roy, Sidecar, Southside, Vieux Carre, Whiskey Sour, and Widow's Kiss
+
 ```
 
 ## 10. Create a cheat sheet for the bartender!
@@ -105,10 +188,23 @@ tribble(~name, ~Lime, ~`White rum`, ~`Cane sugar`, ~`Coca-cola`, ~Mint, ~Soda,
         "Cuba Libre", "X", "X", "", "X","","",
         "Mojito", "X", "X", "", "", "X", "X") %>% 
     relocate(name, sort(names(.)))
+
+
 ```
 
 ```{r}
-
+bartender_cheatsheet <- cocktails_clean |>
+  dplyr::distinct(name, ingredients) |>
+  dplyr::mutate(required = "X") |>
+  tidyr::pivot_wider(
+    names_from = ingredients,
+    values_from = required,
+    values_fill = ""
+  ) |>
+  dplyr::arrange(name)
+bartender_cheatsheet
+ 
+The bartender cheat sheet contains 55 cocktails and 62 unique ingredients. Each row represents a cocktail, and each ingredient is displayed in a separate column. An "X" indicates that the ingredient is required, while an empty cell indicates that it is not needed.
 ```
 
 
