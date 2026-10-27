@@ -103,12 +103,50 @@ Talk about the limitations of your study and findings.
 Read the Animal Rights Scale (ARQ) dataset from the 'data/' folder. Pay attention to the extension.
 
 ```{r}
+data_path <- if (file.exists("data/assignment_5_dataset.csv")) {
+  "data/assignment_5_dataset.csv"
+} else {
+  "../data/assignment_5_dataset.csv"
+}
+
+animal_data <- readr::read_csv(data_path)
+
+head(animal_data)
+dim(animal_data)
 
 ```
 
 ## EDA
 
 ```{r}
+## Inspect the dataset
+str(animal_data)
+summary(animal_data)
+
+## Check missing values
+sum(is.na(animal_data))
+colSums(is.na(animal_data))
+
+## Check the valid response range (1-5)
+ars_items <- animal_data |>
+  dplyr::select(dplyr::all_of(paste0("ar", 1:28)))
+
+sapply(ars_items, function(x) {
+  sum(!is.na(x) & !(x %in% 1:5))
+})
+
+## Check the valid range of the additional variables
+sum(!is.na(animal_data$liberal) &
+      !(animal_data$liberal %in% 1:5))
+
+sum(!is.na(animal_data$sex) &
+      !(animal_data$sex %in% 1:2))
+
+sum(!is.na(animal_data$party) &
+      !(animal_data$party %in% 1:4))
+
+## Descriptive statistics for ARS items
+psych::describe(ars_items)
 
 ```
 
@@ -119,6 +157,26 @@ Recode the sex and party variables as factor type variables with the following l
   * party: 1 - democrat, 2 - republican, 3 - other, 4 - none
 
 ```{r}
+animal_data$sex <- factor(
+  animal_data$sex,
+  levels = c(1, 2),
+  labels = c("Female", "Male")
+)
+
+animal_data$party <- factor(
+  animal_data$party,
+  levels = c(1, 2, 3, 4),
+  labels = c("Democrat", "Republican", "Other", "None")
+)
+
+str(animal_data[, c("sex", "party")])
+
+table(animal_data$sex, useNA = "ifany")
+table(animal_data$party, useNA = "ifany")
+
+### Data Manipulation – Interpretation
+
+
 
 ```
 
@@ -127,13 +185,35 @@ Recode the sex and party variables as factor type variables with the following l
 __Note:__ Remember to only include the variables of the questionnaire that will be part of the factor analysis.
 
 ```{r}
+ars_items <- animal_data |>
+  dplyr::select(dplyr::all_of(paste0("ar", 1:28)))
+
+names(ars_items)
+dim(ars_items)
+
+ars_cor <- cor(
+  ars_items,
+  use = "pairwise.complete.obs",
+  method = "pearson"
+)
+
+round(ars_cor, 2)
+dim(ars_cor)
+
 
 ```
 
 Create the correlation matrix.
 
 ```{r}
+ars_cor <- cor(
+  ars_items,
+  use = "pairwise.complete.obs",
+  method = "pearson"
+)
 
+round(ars_cor, 2)
+dim(ars_cor)
 ```
 
 ## Visualizing the correlation matrix
@@ -141,7 +221,15 @@ Create the correlation matrix.
 Create a visualization of the results of the correlation matrix.
 
 ```{r}
-
+corrplot::corrplot(
+  ars_cor,
+  method = "circle",
+  type = "lower",
+  order = "hclust",
+  tl.col = "black",
+  tl.cex = 0.8,
+  diag = FALSE
+)
 ```
 
 ## Test for factorability
@@ -149,18 +237,28 @@ Create a visualization of the results of the correlation matrix.
 Calculate the KMO score.
 
 ```{r}
+kmo_result <- psych::KMO(ars_cor)
+
+print(kmo_result)
 
 ```
 
 ## Test for multivariate normality
 
 ```{r}
+ars_complete <- na.omit(ars_items)
+
+mardia_result <- psych::mardia(ars_complete)
+print(mardia_result)
 
 ```
 
 Test for skewness and kurtosis.
 
 ```{r}
+normality_stats <- psych::describe(ars_items)
+
+normality_stats[, c("skew", "kurtosis")]
 
 ```
 
@@ -169,7 +267,15 @@ Test for skewness and kurtosis.
 Create a scree plot to help the decision on how many factors to include.
 
 ```{r}
+set.seed(123)
 
+parallel_result <- psych::fa.parallel(
+  ars_complete,
+  fa = "fa",
+  fm = "minres",
+  n.iter = 100,
+  main = "Parallel Analysis Scree Plot - Animal Rights Scale"
+)
 ```
 
 ## Run the factor analysis
@@ -177,31 +283,69 @@ Create a scree plot to help the decision on how many factors to include.
 Run the factor analysis with the chosen number of factors.
 
 ```{r}
+efa_4 <- psych::fa(
+  ars_complete,
+  nfactors = 4,
+  fm = "minres",
+  rotate = "oblimin",
+  scores = "regression"
+)
 
+print(efa_4, cut = 0.30, sort = TRUE)
 ```
 
 Sort the communality scores in decreasing order.
 
 ```{r}
+communalities_sorted <- sort(
+  efa_4$communality,
+  decreasing = TRUE
+)
 
+print(round(communalities_sorted, 3))
 ```
 
 Calculate the mean communality scores.
 
 ```{r}
+mean_communality <- mean(efa_4$communality)
+
+round(mean_communality, 3)
 
 ```
 
 Show the factor loadings for the chosen factor structure.
 
 ```{r}
+loading_table <- as.data.frame(
+  unclass(efa_4$loadings)
+)
 
+loading_table$item <- rownames(loading_table)
+loading_table$h2 <- efa_4$communality
+
+loading_table <- loading_table |>
+  dplyr::relocate(item) |>
+  dplyr::mutate(
+    dplyr::across(where(is.numeric), ~ round(.x, 2))
+  )
+
+knitr::kable(
+  loading_table,
+  caption = "Four-factor pattern matrix and item communalities"
+)
 ```
 
 Visualize the factor structure.
 
-```{r}
-
+```{r fig.width=12, fig.height=10, out.width='100%'}
+psych::fa.diagram(
+  efa_4,
+  cut = 0.40,
+  digits = 2,
+  cex = 0.7,
+  main = "Four-Factor Structure of the Animal Rights Scale"
+)
 ```
 
 ## Run linear regression
@@ -209,18 +353,51 @@ Visualize the factor structure.
 Calculate the factor scores.
 
 ```{r}
+factor_scores <- as.data.frame(efa_4$scores)
 
+head(factor_scores)
+dim(factor_scores)
 ```
 
 Bind factor scores to the original dataset.
 
 ```{r}
+complete_rows <- complete.cases(ars_items)
+
+factor_scores_full <- as.data.frame(
+  matrix(
+    NA_real_,
+    nrow = nrow(animal_data),
+    ncol = ncol(factor_scores)
+  )
+)
+
+names(factor_scores_full) <- names(factor_scores)
+
+factor_scores_full[complete_rows, ] <- factor_scores
+
+animal_with_scores <- dplyr::bind_cols(
+  animal_data,
+  factor_scores_full
+)
+
+dim(animal_with_scores)
+colSums(is.na(factor_scores_full))
+head(animal_with_scores)
 
 ```
 
 Run the logistic regression.
 
 ```{r}
+regression_model <- lm(
+  liberal ~ MR1 + MR2 + MR3 + MR4,
+  data = animal_with_scores
+)
+
+summary(regression_model)
+
+### Linear Regression Results
 
 ```
 
